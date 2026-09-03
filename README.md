@@ -89,11 +89,17 @@ AI (503 without a key)
 | POST | `/api/classes/:id/review-week` | `{ apply?: boolean }`. Reviews the current week, carries undone items forward, asks Claude to rebalance next week against `hoursPerWeek`. Returns a diff (`carriedOver`/`added`/`removed`); **only writes when `apply: true`**. |
 | POST | `/api/classes/:id/chat` | `{ message }`. Claude tool use — it can call `add_plan_item`, `remove_plan_item`, `mark_done`, `set_next_week_items` to mutate the plan directly. |
 | GET | `/api/classes/:id/chat` | chat history (works without a key) |
+| GET | `/api/settings` | `{ model, defaultModel }` — the effective Claude model |
+| PUT | `/api/settings` | `{ model }`. Persists the model choice in `AppSetting`. |
 
 ## Claude integration
 
 All model/prompt/tool code is in [`server/src/claude.ts`](server/src/claude.ts).
-Model: `claude-sonnet-4-5`, overridable with `ANTHROPIC_MODEL` in `server/.env`.
+Model resolution (`server/src/settings.ts`): the `claude.model` row in the
+`AppSetting` table > `ANTHROPIC_MODEL` in `server/.env` > the built-in default
+`claude-sonnet-5`. The DB setting is editable from the UI (⚙ Ρυθμίσεις in the
+sidebar) or via `GET`/`PUT /api/settings`, so switching models needs no restart.
+The active model is shown in the sidebar and reported by `/api/health`.
 Plan generation forces a `propose_week_plan` tool call so the response is
 structured; chat runs a manual tool-use loop (max 8 iterations) whose tool
 handlers live in `server/src/routes/ai.ts`.

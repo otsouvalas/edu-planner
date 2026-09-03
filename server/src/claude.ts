@@ -1,12 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ClassContext } from "./planning.js";
+import { resolveModel } from "./settings.js";
 
 /**
  * All Claude-facing code lives here so models / prompts / tool schemas can be
  * changed in one place.
  */
 
-export const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5";
 const MAX_TOKENS = 8000;
 /** Safety valve for the chat tool-use loop. */
 const MAX_TOOL_ITERATIONS = 8;
@@ -133,7 +133,7 @@ const proposePlanTool: Anthropic.Tool = {
 
 async function requestPlanProposal(prompt: string): Promise<PlanProposal> {
   const response = await client().messages.create({
-    model: MODEL,
+    model: await resolveModel(),
     max_tokens: MAX_TOKENS,
     system: SYSTEM_PROMPT,
     tools: [proposePlanTool],
@@ -292,10 +292,11 @@ export async function runClassChat(options: {
 
   const actions: string[] = [];
   let reply = "";
+  const model = await resolveModel();
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
     const response = await client().messages.create({
-      model: MODEL,
+      model,
       max_tokens: MAX_TOKENS,
       system: `${SYSTEM_PROMPT}
 

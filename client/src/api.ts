@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   ChatMessage,
   CurriculumItem,
   ReviewResult,
@@ -38,6 +39,11 @@ const json = (body: unknown): RequestInit => ({ body: JSON.stringify(body) });
 
 export const api = {
   health: () => request<{ ok: boolean; aiEnabled: boolean; model: string }>("/health"),
+
+  // settings
+  getSettings: () => request<AppSettings>("/settings"),
+  updateModel: (model: string) =>
+    request<AppSettings>("/settings", { method: "PUT", ...json({ model }) }),
 
   // schools & classes
   listSchools: () => request<School[]>("/schools"),

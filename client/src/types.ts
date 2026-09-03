@@ -1,3 +1,9 @@
+export interface AppSettings {
+  /** Effective model: DB setting > ANTHROPIC_MODEL env var > built-in default. */
+  model: string;
+  defaultModel: string;
+}
+
 export interface School {
   id: number;
   name: string;

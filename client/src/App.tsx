@@ -55,6 +55,7 @@ export function App() {
         schools={schools}
         selectedClassId={selected?.id ?? null}
         aiEnabled={aiEnabled}
+        onError={onError}
         onSelectClass={(schoolClass) => {
           setSelected(schoolClass);
           setError(null);

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SettingsPanel } from "./SettingsPanel";
 import type { School, SchoolClass } from "../types";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   onDeleteSchool: (id: number) => Promise<void>;
   onDeleteClass: (id: number) => Promise<void>;
   aiEnabled: boolean | null;
+  onError: (message: string) => void;
 }
 
 export function Sidebar({
@@ -21,6 +23,7 @@ export function Sidebar({
   onDeleteSchool,
   onDeleteClass,
   aiEnabled,
+  onError,
 }: Props) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [schoolName, setSchoolName] = useState("");
@@ -153,6 +156,8 @@ export function Sidebar({
           +
         </button>
       </form>
+
+      <SettingsPanel onError={onError} />
     </aside>
   );
 }

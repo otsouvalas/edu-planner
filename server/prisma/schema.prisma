@@ -7,6 +7,14 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+/// Single-user key/value store for app-level settings (e.g. the Claude model).
+model AppSetting {
+  key   String @id
+  value String
+
+  updatedAt DateTime @updatedAt
+}
+
 model School {
   id      Int           @id @default(autoincrement())
   name    String
