@@ -1,0 +1,33 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+
+# secrets — never bake env files into the image
+.env
+.env.*
+!.env.production.example
+**/.env
+**/.env.local
+
+# never bake a database into the image (it lives on a volume)
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+
+*.log
+npm-debug.log*
+.DS_Store
+.omc
+**/.omc
+.vscode
+.idea
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md

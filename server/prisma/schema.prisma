@@ -4,7 +4,9 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  // Relative paths resolve against this schema's directory (server/prisma).
+  // Dev: file:./dev.db  —  Docker: file:/app/data/prod.db (a mounted volume).
+  url      = env("DATABASE_URL")
 }
 
 /// Single-user key/value store for app-level settings (e.g. the Claude model).

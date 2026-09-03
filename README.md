@@ -18,12 +18,12 @@ Single user — δεν υπάρχει σύστημα σύνδεσης.
 # 1. dependencies (root, installs both workspaces)
 npm install
 
-# 2. database (creates server/prisma/dev.db and applies migrations)
-npm run prisma:migrate
-
-# 3. API key for the AI features (optional — CRUD works without it)
+# 2. env (also sets DATABASE_URL, which Prisma now requires)
 cp server/.env.example server/.env
-$EDITOR server/.env        # set ANTHROPIC_API_KEY=sk-ant-...
+$EDITOR server/.env        # set ANTHROPIC_API_KEY=sk-ant-... (optional)
+
+# 3. database (creates server/prisma/dev.db and applies migrations)
+npm run prisma:migrate
 
 # 4. run both dev servers
 npm run dev
@@ -45,6 +45,58 @@ in the UI.
 | `npm run build` | typecheck + compile server, build client |
 | `npm run prisma:migrate` | create/apply a migration |
 | `npm run prisma:studio` | Prisma Studio on the SQLite db |
+
+## Production deploy (Docker)
+
+One image, one container, one port: the Express process serves the JSON API
+under `/api` and the built React client (`client/dist`) for everything else, so
+no nginx or separate static host is needed. Target is a Debian LXC with Docker.
+
+### On the host
+
+```bash
+# repo at /opt/edu-planner (git clone or rsync)
+cd /opt/edu-planner
+
+# env file — required, not committed
+cp .env.production.example .env
+$EDITOR .env               # ANTHROPIC_API_KEY, ANTHROPIC_WORKSPACE_ID
+
+docker compose up -d --build
+```
+
+The app is then on **port 4000** (`http://<lxc-ip>:4000`), the same port the API
+uses in dev. To change it, edit both `PORT` in `.env` and the `ports:` mapping
+in `docker-compose.yml`.
+
+Update after a `git pull`: `docker compose up -d --build`. Logs:
+`docker compose logs -f`. Stop: `docker compose down` (the volume survives).
+
+### Env vars
+
+| Var | Required | Notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | no | Without it the app runs fine; AI endpoints return `503` |
+| `ANTHROPIC_WORKSPACE_ID` | only for identity-linked keys | `wrkspc_...` |
+| `ANTHROPIC_MODEL` | no | Fallback model, below the `claude.model` DB setting |
+| `PORT` | no | Defaults to `4000` |
+| `DATABASE_URL` | no | Pinned to `file:/app/data/prod.db` by compose |
+
+### Data & migrations
+
+The SQLite database is **never** baked into the image. It lives in the named
+volume `edu-planner-data`, mounted at `/app/data`, so it survives rebuilds,
+restarts and `docker compose down`. On every container start the entrypoint runs
+`prisma migrate deploy` (never `migrate dev`) against that volume, so the schema
+is brought up to date without touching existing data.
+
+```bash
+# backup
+docker run --rm -v edu-planner-data:/data -v "$PWD:/out" alpine \
+  cp /data/prod.db /out/edu-planner-backup.db
+```
+
+Deleting the volume (`docker volume rm edu-planner-data`) deletes all data.
 
 ## Data model
 
@@ -116,5 +168,5 @@ Main panel per class, three tabs:
 
 ## Not built (deliberately)
 
-No auth, no deployment config, no cron/automatic weekly review (the review is a
-manual button), no file uploads, no multi-user roles.
+No auth, no cron/automatic weekly review (the review is a manual button), no
+file uploads, no multi-user roles.

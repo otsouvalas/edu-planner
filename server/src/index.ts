@@ -1,4 +1,7 @@
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import Anthropic from "@anthropic-ai/sdk";
@@ -29,9 +32,29 @@ app.use("/api", planRouter);
 app.use("/api", chatHistoryRouter);
 app.use("/api", aiRouter);
 
-app.use((_req, res) => {
+app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
+
+// Production (Docker): serve the built client from the same process, so one
+// container serves both the API and the UI. In dev this directory does not
+// exist and Vite serves the client with a proxy to /api, so nothing changes.
+const clientDist = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../client/dist",
+);
+const clientIndex = path.join(clientDist, "index.html");
+
+if (fs.existsSync(clientIndex)) {
+  app.use(express.static(clientDist));
+  app.get("*", (_req, res) => {
+    res.sendFile(clientIndex);
+  });
+} else {
+  app.use((_req, res) => {
+    res.status(404).json({ error: "Not found" });
+  });
+}
 
 app.use(
   (

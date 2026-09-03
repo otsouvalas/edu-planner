@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    image: edu-planner
+    container_name: edu-planner
+    restart: unless-stopped
+    # Reads ANTHROPIC_API_KEY / ANTHROPIC_WORKSPACE_ID / ANTHROPIC_MODEL / PORT.
+    # Create it from .env.production.example; it is never committed.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # The database always lives inside the mounted volume below.
+      DATABASE_URL: file:/app/data/prod.db
+    ports:
+      # host:container — 4000 matches the dev API port.
+      - "4000:4000"
+    volumes:
+      - edu-planner-data:/app/data
+
+volumes:
+  edu-planner-data:
