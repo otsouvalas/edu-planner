@@ -61,6 +61,20 @@ export interface ReviewDiffEntry {
   title: string;
 }
 
+export interface CurriculumTemplate {
+  id: number;
+  name: string;
+  itemCount: number;
+  createdAt: string;
+}
+
+export interface CurriculumImportResult {
+  source: "cache" | "ai-text" | "ai-pdf";
+  templateId: number;
+  templateName: string;
+  added: CurriculumItem[];
+}
+
 export interface ReviewResult {
   applied: boolean;
   rationale: string;

@@ -199,6 +199,140 @@ export async function proposeWeekRevision(
 }
 
 // ---------------------------------------------------------------------------
+// Curriculum extraction from an uploaded PDF (curriculum-bank import)
+// ---------------------------------------------------------------------------
+
+export interface ExtractedCurriculumItem {
+  title: string;
+  description?: string;
+  estimatedHours?: number;
+}
+
+const extractCurriculumTool: Anthropic.Tool = {
+  name: "extract_curriculum",
+  description:
+    "Καταθέτει τη λίστα ενοτήτων ύλης που εντοπίστηκαν στο έγγραφο. Κάλεσέ το ακριβώς μία φορά.",
+  input_schema: {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Τίτλος ενότητας ύλης." },
+            description: {
+              type: "string",
+              description: "Σύντομη περιγραφή (προαιρετικό).",
+            },
+            estimated_hours: {
+              type: "number",
+              description: "Εκτιμώμενες ώρες διδασκαλίας, αν αναφέρονται ή προκύπτουν.",
+            },
+          },
+          required: ["title"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["items"],
+    additionalProperties: false,
+  },
+};
+
+const EXTRACT_CURRICULUM_SYSTEM_PROMPT =
+  "Είσαι βοηθός εξαγωγής ύλης από επίσημα έγγραφα προγράμματος σπουδών Πληροφορικής " +
+  "για ελληνικό Γυμνάσιο/Λύκειο. Εξήγαγε τη λίστα διδακτικών ενοτήτων με τη σειρά που " +
+  "εμφανίζονται, με σύντομη περιγραφή και εκτιμώμενες ώρες όπου αναφέρονται ή μπορούν " +
+  "λογικά να εκτιμηθούν.";
+
+function parseExtractedCurriculum(response: Anthropic.Message): ExtractedCurriculumItem[] {
+  const toolUse = response.content.find(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+  );
+  if (!toolUse) {
+    throw new Error("Το μοντέλο δεν επέστρεψε λίστα ύλης.");
+  }
+  const input = toolUse.input as { items?: unknown };
+  if (!Array.isArray(input.items)) return [];
+
+  return input.items
+    .map((raw) => raw as Record<string, unknown>)
+    .filter((raw) => typeof raw.title === "string" && raw.title.trim() !== "")
+    .map((raw) => ({
+      title: (raw.title as string).trim(),
+      description:
+        typeof raw.description === "string" && raw.description.trim() !== ""
+          ? raw.description.trim()
+          : undefined,
+      estimatedHours:
+        typeof raw.estimated_hours === "number" && Number.isFinite(raw.estimated_hours)
+          ? raw.estimated_hours
+          : undefined,
+    }));
+}
+
+/**
+ * Reads syllabus text (already extracted from a PDF by code, not by Claude)
+ * and returns the curriculum items it describes. Plain text is far cheaper
+ * than sending the PDF itself (no per-page vision processing), so callers
+ * should always prefer this over {@link extractCurriculumFromPdf} when text
+ * extraction succeeds.
+ */
+export async function extractCurriculumFromText(
+  text: string,
+): Promise<ExtractedCurriculumItem[]> {
+  const response = await client().messages.create({
+    model: await resolveModel(),
+    max_tokens: MAX_TOKENS,
+    system: EXTRACT_CURRICULUM_SYSTEM_PROMPT,
+    tools: [extractCurriculumTool],
+    tool_choice: { type: "tool", name: "extract_curriculum" },
+    messages: [
+      {
+        role: "user",
+        content:
+          `Κείμενο εγγράφου:\n\n${text}\n\n` +
+          "Εξήγαγε τη λίστα ενοτήτων ύλης από αυτό το κείμενο. Κάλεσε το εργαλείο extract_curriculum.",
+      },
+    ],
+  });
+  return parseExtractedCurriculum(response);
+}
+
+/**
+ * Fallback for scanned/image-only PDFs where no text could be extracted in
+ * code: sends the PDF itself to Claude (vision), which costs more per page.
+ */
+export async function extractCurriculumFromPdf(
+  pdfBase64: string,
+): Promise<ExtractedCurriculumItem[]> {
+  const response = await client().messages.create({
+    model: await resolveModel(),
+    max_tokens: MAX_TOKENS,
+    system: EXTRACT_CURRICULUM_SYSTEM_PROMPT,
+    tools: [extractCurriculumTool],
+    tool_choice: { type: "tool", name: "extract_curriculum" },
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+          },
+          {
+            type: "text",
+            text: "Εξήγαγε τη λίστα ενοτήτων ύλης από αυτό το έγγραφο. Κάλεσε το εργαλείο extract_curriculum.",
+          },
+        ],
+      },
+    ],
+  });
+  return parseExtractedCurriculum(response);
+}
+
+// ---------------------------------------------------------------------------
 // Chat with plan-mutating tools
 // ---------------------------------------------------------------------------
 

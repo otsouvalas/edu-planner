@@ -1,11 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import type { CurriculumItem } from "../types";
+import type { CurriculumItem, CurriculumTemplate } from "../types";
 
 interface Props {
   classId: number;
   onError: (message: string) => void;
 }
+
+const IMPORT_SOURCE_LABEL: Record<string, string> = {
+  cache: "από ήδη γνωστό PDF (χωρίς κόστος AI)",
+  "ai-text": "AI (κείμενο PDF)",
+  "ai-pdf": "AI (σαρωμένο PDF)",
+};
 
 export function CurriculumTab({ classId, onError }: Props) {
   const [items, setItems] = useState<CurriculumItem[]>([]);
@@ -13,6 +19,12 @@ export function CurriculumTab({ classId, onError }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [hours, setHours] = useState("");
+
+  const [templates, setTemplates] = useState<CurriculumTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reload = () => {
     setLoading(true);
@@ -23,7 +35,47 @@ export function CurriculumTab({ classId, onError }: Props) {
       .finally(() => setLoading(false));
   };
 
+  const reloadTemplates = () => {
+    api.listCurriculumTemplates().then(setTemplates).catch(() => undefined);
+  };
+
   useEffect(reload, [classId]);
+  useEffect(reloadTemplates, []);
+
+  const uploadPdf = async (file: File) => {
+    setImporting(true);
+    setImportMessage(null);
+    try {
+      const result = await api.importCurriculumPdf(classId, file);
+      setImportMessage(
+        `Προστέθηκαν ${result.added.length} ενότητες από «${result.templateName}» (${IMPORT_SOURCE_LABEL[result.source]}).`,
+      );
+      reload();
+      reloadTemplates();
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const importFromTemplate = async () => {
+    if (!selectedTemplateId) return;
+    setImporting(true);
+    setImportMessage(null);
+    try {
+      const result = await api.importCurriculumTemplate(classId, Number(selectedTemplateId));
+      setImportMessage(
+        `Προστέθηκαν ${result.added.length} ενότητες από «${result.templateName}» (τράπεζα ύλης, χωρίς κόστος AI).`,
+      );
+      reload();
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const add = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -57,6 +109,46 @@ export function CurriculumTab({ classId, onError }: Props) {
 
   return (
     <>
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Εισαγωγή ύλης</h3>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf"
+            disabled={importing}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void uploadPdf(file);
+            }}
+          />
+        </div>
+        {templates.length > 0 && (
+          <div className="row">
+            <select
+              className="grow"
+              value={selectedTemplateId}
+              onChange={(event) => setSelectedTemplateId(event.target.value)}
+            >
+              <option value="">Ή χρήση ύλης που έχει ήδη καταχωρηθεί…</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} ({template.itemCount} ενότητες)
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => void importFromTemplate()}
+              disabled={!selectedTemplateId || importing}
+            >
+              Χρήση
+            </button>
+          </div>
+        )}
+        {importing && <p className="empty">Επεξεργασία…</p>}
+        {importMessage && <p className="settings-hint ok">{importMessage}</p>}
+      </div>
+
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Νέα ενότητα ύλης</h3>
         <form onSubmit={add}>

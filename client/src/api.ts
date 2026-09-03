@@ -1,7 +1,9 @@
 import type {
   AppSettings,
   ChatMessage,
+  CurriculumImportResult,
   CurriculumItem,
+  CurriculumTemplate,
   ReviewResult,
   School,
   SchoolClass,
@@ -19,8 +21,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const jsonBody = init?.body && !(init.body instanceof FormData);
   const response = await fetch(`/api${path}`, {
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    headers: jsonBody ? { "Content-Type": "application/json" } : undefined,
     ...init,
   });
   if (response.status === 204) return undefined as T;
@@ -73,6 +76,22 @@ export const api = {
     request<CurriculumItem>(`/curriculum/${id}`, { method: "PATCH", ...json(body) }),
   deleteCurriculumItem: (id: number) =>
     request<void>(`/curriculum/${id}`, { method: "DELETE" }),
+
+  // curriculum bank
+  listCurriculumTemplates: () => request<CurriculumTemplate[]>("/curriculum-templates"),
+  importCurriculumPdf: (classId: number, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<CurriculumImportResult>(`/classes/${classId}/curriculum/import-pdf`, {
+      method: "POST",
+      body,
+    });
+  },
+  importCurriculumTemplate: (classId: number, templateId: number) =>
+    request<CurriculumImportResult>(`/classes/${classId}/curriculum/import-template`, {
+      method: "POST",
+      ...json({ templateId }),
+    }),
 
   // plans
   weeks: () => request<{ current: string; next: string }>("/weeks"),

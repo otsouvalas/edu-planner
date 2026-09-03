@@ -1,19 +1,31 @@
+import crypto from "node:crypto";
 import { Router } from "express";
+import multer from "multer";
+import { PDFParse } from "pdf-parse";
 import { prisma } from "../db.js";
 import {
   ClaudeNotConfiguredError,
+  extractCurriculumFromPdf,
+  extractCurriculumFromText,
   isClaudeConfigured,
   proposeWeekPlan,
   proposeWeekRevision,
   runClassChat,
   type ChatToolResult,
+  type ExtractedCurriculumItem,
 } from "../claude.js";
 import { HttpError, asyncHandler, intParam, requiredString } from "../http.js";
 import { buildClassContext, findPlan, getOrCreatePlan, setPlanItems } from "../planning.js";
 import { currentWeekStart, nextWeekStart, parseWeekParam, toIsoDate } from "../weeks.js";
 import { serializePlan } from "./plans.js";
+import { insertCurriculumItems } from "./crud.js";
 
 export const aiRouter = Router();
+
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 /** All AI endpoints refuse early (503) when no API key is configured. */
 aiRouter.use((_req, _res, next) => {
@@ -283,6 +295,87 @@ aiRouter.post(
     });
 
     res.json({ message: assistantMessage, actions: turn.actions });
+  }),
+);
+
+// -------------------------------------------------- curriculum PDF import ---
+
+/** Below this, code-based text extraction is treated as having failed (scanned/image-only PDF). */
+const MIN_EXTRACTED_TEXT_LENGTH = 200;
+
+aiRouter.post(
+  "/classes/:id/curriculum/import-pdf",
+  pdfUpload.single("file"),
+  asyncHandler(async (req, res) => {
+    const schoolClassId = intParam(req.params.id, "id");
+    await requireClass(schoolClassId);
+
+    const file = req.file;
+    if (!file) throw new HttpError(400, "Λείπει το αρχείο PDF.");
+    if (file.mimetype !== "application/pdf") {
+      throw new HttpError(400, "Το αρχείο πρέπει να είναι PDF.");
+    }
+
+    const sourceHash = crypto.createHash("sha256").update(file.buffer).digest("hex");
+
+    let template = await prisma.curriculumTemplate.findUnique({
+      where: { sourceHash },
+      include: { items: { orderBy: { position: "asc" } } },
+    });
+
+    let source: "cache" | "ai-text" | "ai-pdf" = "cache";
+    if (!template) {
+      // Code-based text extraction first — far cheaper than sending the PDF
+      // to Claude for vision processing; only fall back to that for
+      // scanned/image-only PDFs with no extractable text layer.
+      const parser = new PDFParse({ data: file.buffer });
+      let text = "";
+      try {
+        text = (await parser.getText()).text.trim();
+      } finally {
+        await parser.destroy();
+      }
+
+      let extracted: ExtractedCurriculumItem[];
+      if (text.length >= MIN_EXTRACTED_TEXT_LENGTH) {
+        source = "ai-text";
+        extracted = await extractCurriculumFromText(text);
+      } else {
+        source = "ai-pdf";
+        extracted = await extractCurriculumFromPdf(file.buffer.toString("base64"));
+      }
+      if (extracted.length === 0) {
+        throw new HttpError(400, "Δεν εντοπίστηκε ύλη σε αυτό το PDF.");
+      }
+
+      const name = file.originalname.replace(/\.pdf$/i, "");
+      template = await prisma.curriculumTemplate.create({
+        data: {
+          name,
+          sourceHash,
+          items: {
+            create: extracted.map((item, index) => ({
+              title: item.title,
+              description: item.description ?? null,
+              estimatedHours: item.estimatedHours ?? null,
+              position: index,
+            })),
+          },
+        },
+        include: { items: { orderBy: { position: "asc" } } },
+      });
+    }
+
+    const added = await insertCurriculumItems(
+      schoolClassId,
+      template.items.map((item) => ({
+        title: item.title,
+        description: item.description ?? undefined,
+        estimatedHours: item.estimatedHours ?? undefined,
+      })),
+    );
+
+    res.json({ source, templateId: template.id, templateName: template.name, added });
   }),
 );
 

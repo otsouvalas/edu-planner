@@ -120,6 +120,14 @@ CRUD
 | GET/POST | `/api/classes` (`?schoolId=`), GET/PATCH/DELETE `/api/classes/:id` |
 | GET/POST | `/api/classes/:id/curriculum`, PATCH/DELETE `/api/curriculum/:id` |
 
+Curriculum bank (reuse across classes/schools without re-running AI)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/curriculum-templates` | `{ id, name, itemCount, createdAt }[]` |
+| POST | `/api/classes/:id/curriculum/import-template` | `{ templateId }` — copies a bank entry's items into the class |
+| POST | `/api/classes/:id/curriculum/import-pdf` | multipart `file` (PDF, 503 without a key) — see below |
+
 Weekly plans
 
 | Method | Path | Notes |
@@ -144,6 +152,28 @@ AI (503 without a key)
 | GET | `/api/classes/:id/chat` | chat history (works without a key) |
 | GET | `/api/settings` | `{ model, defaultModel }` — the effective Claude model |
 | PUT | `/api/settings` | `{ model }`. Persists the model choice in `AppSetting`. |
+
+## Curriculum bank & PDF import
+
+`/api/classes/:id/curriculum/import-pdf` lets a teacher upload the official
+syllabus PDF for a class instead of typing every unit by hand. To keep AI
+cost down:
+
+1. The PDF's SHA-256 hash is checked against `CurriculumTemplate.sourceHash`
+   first. An exact re-upload (e.g. the same file for a parallel class) skips
+   Claude entirely and reuses the stored items (`source: "cache"`).
+2. On a genuinely new file, the PDF's text is extracted **in code**
+   (`pdf-parse`, no AI) and only that plain text is sent to Claude
+   (`source: "ai-text"`) — far cheaper than sending the PDF itself, since
+   Claude would otherwise render and process every page as an image.
+3. Only when no text layer exists (a scanned/image-only PDF) does it fall
+   back to sending the PDF to Claude directly (`source: "ai-pdf"`).
+
+Every successful extraction (text or PDF) is saved as a new
+`CurriculumTemplate`, so `GET /api/curriculum-templates` lets the UI also
+offer "reuse existing curriculum" for a *different* PDF covering the same
+material (e.g. same grade, different school) — `import-template` copies it
+in with zero AI calls.
 
 ## Claude integration
 

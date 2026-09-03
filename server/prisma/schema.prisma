@@ -94,6 +94,35 @@ model WeeklyPlanItem {
   @@index([curriculumItemId])
 }
 
+/// A reusable set of curriculum items extracted once from a PDF (or built up
+/// manually), so re-importing the same syllabus into another class/school
+/// doesn't need another AI call. Keyed by sourceHash for automatic dedup on
+/// upload; also independently pickable by name for the "same curriculum,
+/// different PDF" case.
+model CurriculumTemplate {
+  id    Int    @id @default(autoincrement())
+  name  String
+  /// SHA-256 of the source PDF bytes, null for templates with no PDF origin.
+  sourceHash String? @unique
+
+  items CurriculumTemplateItem[]
+
+  createdAt DateTime @default(now())
+}
+
+model CurriculumTemplateItem {
+  id                   Int     @id @default(autoincrement())
+  curriculumTemplateId Int
+  title                String
+  description          String?
+  estimatedHours       Float?
+  position             Int     @default(0)
+
+  template CurriculumTemplate @relation(fields: [curriculumTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([curriculumTemplateId])
+}
+
 model ChatMessage {
   id            Int      @id @default(autoincrement())
   schoolClassId Int

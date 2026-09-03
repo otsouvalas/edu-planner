@@ -11,6 +11,78 @@ import {
 
 export const crudRouter = Router();
 
+/** Appends items to a class's curriculum, continuing the existing position order. */
+export async function insertCurriculumItems(
+  schoolClassId: number,
+  items: { title: string; description?: string; estimatedHours?: number }[],
+) {
+  const last = await prisma.curriculumItem.findFirst({
+    where: { schoolClassId },
+    orderBy: { position: "desc" },
+  });
+  let position = (last?.position ?? 0) + 1;
+  const created = [];
+  for (const item of items) {
+    created.push(
+      await prisma.curriculumItem.create({
+        data: {
+          schoolClassId,
+          title: item.title,
+          description: item.description ?? null,
+          estimatedHours: item.estimatedHours ?? null,
+          position: position++,
+        },
+      }),
+    );
+  }
+  return created;
+}
+
+// -------------------------------------------------------- curriculum bank ---
+
+crudRouter.get(
+  "/curriculum-templates",
+  asyncHandler(async (_req, res) => {
+    const templates = await prisma.curriculumTemplate.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { _count: { select: { items: true } } },
+    });
+    res.json(
+      templates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        itemCount: t._count.items,
+        createdAt: t.createdAt,
+      })),
+    );
+  }),
+);
+
+crudRouter.post(
+  "/classes/:id/curriculum/import-template",
+  asyncHandler(async (req, res) => {
+    const schoolClassId = intParam(req.params.id, "id");
+    const schoolClass = await prisma.schoolClass.findUnique({ where: { id: schoolClassId } });
+    if (!schoolClass) throw new HttpError(404, "Το τμήμα δεν βρέθηκε.");
+    const templateId = intParam(req.body?.templateId, "templateId");
+    const template = await prisma.curriculumTemplate.findUnique({
+      where: { id: templateId },
+      include: { items: { orderBy: { position: "asc" } } },
+    });
+    if (!template) throw new HttpError(404, "Η τράπεζα ύλης δεν βρέθηκε.");
+
+    const added = await insertCurriculumItems(
+      schoolClassId,
+      template.items.map((item) => ({
+        title: item.title,
+        description: item.description ?? undefined,
+        estimatedHours: item.estimatedHours ?? undefined,
+      })),
+    );
+    res.json({ templateId: template.id, templateName: template.name, added });
+  }),
+);
+
 // --------------------------------------------------------------- schools ---
 
 crudRouter.get(
