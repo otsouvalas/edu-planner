@@ -79,6 +79,7 @@ Update after a `git pull`: `docker compose up -d --build`. Logs:
 | `ANTHROPIC_API_KEY` | no | Without it the app runs fine; AI endpoints return `503` |
 | `ANTHROPIC_WORKSPACE_ID` | only for identity-linked keys | `wrkspc_...` |
 | `ANTHROPIC_MODEL` | no | Fallback model, below the `claude.model` DB setting |
+| `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` | no | Shared HTTP Basic Auth for the whole app. Leave both empty to disable |
 | `PORT` | no | Defaults to `4000` |
 | `DATABASE_URL` | no | Pinned to `file:/app/data/prod.db` by compose |
 

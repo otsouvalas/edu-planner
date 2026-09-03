@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,41 @@ import { resolveModel } from "./settings.js";
 import { asyncHandler } from "./http.js";
 
 const app = express();
+
+/**
+ * Single shared username/password gate for the whole app (deployed on the
+ * open internet, single user — no need for a real auth system). Disabled
+ * automatically when BASIC_AUTH_USER/PASS are not set (e.g. local dev).
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+const basicAuthUser = process.env.BASIC_AUTH_USER;
+const basicAuthPass = process.env.BASIC_AUTH_PASS;
+
+if (basicAuthUser && basicAuthPass) {
+  app.use((req, res, next) => {
+    const header = req.headers.authorization ?? "";
+    const [scheme, encoded] = header.split(" ");
+    if (scheme === "Basic" && encoded) {
+      const decoded = Buffer.from(encoded, "base64").toString();
+      const sep = decoded.indexOf(":");
+      const user = sep === -1 ? decoded : decoded.slice(0, sep);
+      const pass = sep === -1 ? "" : decoded.slice(sep + 1);
+      if (timingSafeEqual(user, basicAuthUser) && timingSafeEqual(pass, basicAuthPass)) {
+        next();
+        return;
+      }
+    }
+    res.set("WWW-Authenticate", 'Basic realm="edu-planner"');
+    res.status(401).send("Authentication required.");
+  });
+}
+
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
