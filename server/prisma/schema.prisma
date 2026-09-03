@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model School {
+  id      Int           @id @default(autoincrement())
+  name    String
+  classes SchoolClass[]
+
+  createdAt DateTime @default(now())
+}
+
+model SchoolClass {
+  id       Int    @id @default(autoincrement())
+  schoolId Int
+  name     String
+  /// Free-text grade level, e.g. "Α Γυμνασίου"
+  gradeLevel String?
+
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  curriculumItems CurriculumItem[]
+  weeklyPlans     WeeklyPlan[]
+  chatMessages    ChatMessage[]
+
+  createdAt DateTime @default(now())
+
+  @@index([schoolId])
+}
+
+model CurriculumItem {
+  id            Int     @id @default(autoincrement())
+  schoolClassId Int
+  title         String
+  description   String?
+  estimatedHours Float?
+  /// Ordering hint inside the syllabus
+  position      Int     @default(0)
+
+  schoolClass SchoolClass      @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+  planItems   WeeklyPlanItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([schoolClassId])
+}
+
+model WeeklyPlan {
+  id            Int      @id @default(autoincrement())
+  schoolClassId Int
+  weekStartDate DateTime
+  hoursPerWeek  Float    @default(2)
+  /// draft | active | closed
+  status        String   @default("draft")
+
+  schoolClass SchoolClass      @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+  items       WeeklyPlanItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolClassId, weekStartDate])
+  @@index([schoolClassId])
+}
+
+model WeeklyPlanItem {
+  id               Int     @id @default(autoincrement())
+  weeklyPlanId     Int
+  curriculumItemId Int
+  done             Boolean @default(false)
+  notes            String?
+
+  weeklyPlan     WeeklyPlan     @relation(fields: [weeklyPlanId], references: [id], onDelete: Cascade)
+  curriculumItem CurriculumItem @relation(fields: [curriculumItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([weeklyPlanId, curriculumItemId])
+  @@index([weeklyPlanId])
+  @@index([curriculumItemId])
+}
+
+model ChatMessage {
+  id            Int      @id @default(autoincrement())
+  schoolClassId Int
+  /// user | assistant
+  role          String
+  content       String
+  createdAt     DateTime @default(now())
+
+  schoolClass SchoolClass @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+
+  @@index([schoolClassId])
+}
