@@ -28,7 +28,13 @@ let cached: Anthropic | null = null;
 
 function client(): Anthropic {
   if (!isClaudeConfigured()) throw new ClaudeNotConfiguredError();
-  if (!cached) cached = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (!cached) {
+    const workspaceId = process.env.ANTHROPIC_WORKSPACE_ID;
+    cached = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      defaultHeaders: workspaceId ? { "anthropic-workspace-id": workspaceId } : undefined,
+    });
+  }
   return cached;
 }
 
